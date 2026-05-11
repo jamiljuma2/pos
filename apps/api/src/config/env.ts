@@ -1,7 +1,30 @@
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { z } from 'zod';
 
+// Load .env from cwd first, then attempt to find a .env upward in the repo
 dotenv.config();
+
+function findEnvUpwards(startDir: string, maxLevels = 6): string | null {
+  let dir = startDir;
+  for (let i = 0; i < maxLevels; i++) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+// If critical envs are missing, try loading .env from repository root (search upwards)
+if (!process.env.DATABASE_URL || !process.env.JWT_ACCESS_SECRET) {
+  const envPath = findEnvUpwards(process.cwd());
+  if (envPath) {
+    dotenv.config({ path: envPath });
+  }
+}
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

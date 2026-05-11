@@ -1,6 +1,31 @@
 import 'dotenv/config';
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+
+function findEnvUpwards(startDir: string, maxLevels = 6): string | null {
+  let dir = startDir;
+  for (let i = 0; i < maxLevels; i++) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+// If critical envs are missing, try loading .env from repository root
+if (!process.env.SUPER_ADMIN_EMAIL || !process.env.SUPER_ADMIN_PASSWORD) {
+  const envPath = findEnvUpwards(process.cwd());
+  if (envPath) {
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    const parsed = dotenv.parse(envContent);
+    Object.assign(process.env, parsed);
+  }
+}
 
 const prisma = new PrismaClient();
 
