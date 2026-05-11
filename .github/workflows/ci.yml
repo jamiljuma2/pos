@@ -16,5 +16,5 @@ jobs:
       - run: npm install
       - run: npm run db:generate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pos_saas?schema=public
+          DATABASE_URL: postgresql://user:password@localhost:5432/pos?sslmode=disable
       - run: npm run build
