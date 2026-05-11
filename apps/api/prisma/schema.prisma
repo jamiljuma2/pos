@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+  STAFF
+}
+
+enum TransactionStatus {
+  DRAFT
+  COMPLETED
+  VOIDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentProvider {
+  LIPANA
+  CASH
+  CARD
+  MANUAL
+}
+
+model Business {
+  id               String        @id @default(cuid())
+  name             String
+  location         String?
+  currency         String        @default("KES")
+  phone            String?
+  ownerId          String        @unique
+  parentBusinessId String?
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  owner            User          @relation("BusinessOwner", fields: [ownerId], references: [id])
+  parentBusiness   Business?     @relation("BusinessHierarchy", fields: [parentBusinessId], references: [id])
+  childBusinesses  Business[]    @relation("BusinessHierarchy")
+  users            User[]
+  staff            Staff[]
+  categories       Category[]
+  products         Product[]
+  transactions     Transaction[]
+  transactionItems TransactionItem[]
+  payments         Payment[]
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
+
+  @@map("businesses")
+}
+
+model User {
+  id            String        @id @default(cuid())
+  businessId    String?       @map("business_id")
+  name          String
+  email         String        @unique
+  passwordHash  String
+  role          Role
+  isActive      Boolean       @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business?     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  ownedBusiness Business?     @relation("BusinessOwner")
+  staffProfile  Staff?
+  refreshTokens RefreshToken[]
+  auditEntries  AuditLog[]
+
+  @@index([businessId, role])
+  @@map("users")
+}
+
+model Staff {
+  id            String        @id @default(cuid())
+  businessId    String        @map("business_id")
+  userId        String        @unique
+  displayName   String?
+  pinHash       String?
+  permissions   String[]      @default([])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+
+  @@index([businessId])
+  @@map("staff")
+}
+
+model Category {
+  id            String        @id @default(cuid())
+  businessId    String        @map("business_id")
+  name          String
+  slug          String
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products      Product[]
+
+  @@unique([businessId, slug])
+  @@map("categories")
+}
+
+model Product {
+  id                 String        @id @default(cuid())
+  businessId         String        @map("business_id")
+  categoryId         String?
+  name               String
+  sku                String
+  barcode            String?
+  description        String?
+  price              Decimal       @db.Decimal(12, 2)
+  costPrice          Decimal?      @db.Decimal(12, 2)
+  stock              Int           @default(0)
+  lowStockThreshold  Int           @default(10)
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  business           Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category           Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  transactionItems   TransactionItem[]
+
+  @@unique([businessId, sku])
+  @@unique([businessId, barcode])
+  @@index([businessId, categoryId])
+  @@index([businessId, isActive])
+  @@map("products")
+}
+
+model Transaction {
+  id               String            @id @default(cuid())
+  businessId       String            @map("business_id")
+  staffId          String?
+  receiptNumber    String
+  customerPhone    String?
+  subtotal         Decimal           @db.Decimal(12, 2)
+  discountTotal    Decimal           @default(0) @db.Decimal(12, 2)
+  taxTotal         Decimal           @default(0) @db.Decimal(12, 2)
+  total            Decimal           @db.Decimal(12, 2)
+  status           TransactionStatus @default(COMPLETED)
+  paymentStatus    PaymentStatus     @default(PENDING)
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  staff            Staff?            @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  items            TransactionItem[]
+  payments         Payment[]
+
+  @@unique([businessId, receiptNumber])
+  @@index([businessId, createdAt])
+  @@index([businessId, staffId])
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id              String      @id @default(cuid())
+  businessId      String      @map("business_id")
+  transactionId   String
+  productId       String?
+  productName     String
+  sku             String
+  barcode         String?
+  quantity        Int
+  unitPrice       Decimal     @db.Decimal(12, 2)
+  discount        Decimal     @default(0) @db.Decimal(12, 2)
+  total           Decimal     @db.Decimal(12, 2)
+  productSnapshot Json?
+  createdAt       DateTime    @default(now())
+
+  business        Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  product         Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, transactionId])
+  @@map("transaction_items")
+}
+
+model Payment {
+  id                     String        @id @default(cuid())
+  businessId             String        @map("business_id")
+  transactionId           String?
+  provider               PaymentProvider @default(LIPANA)
+  externalTransactionId   String?
+  checkoutRequestId      String?
+  phone                  String
+  amount                 Decimal       @db.Decimal(12, 2)
+  status                 PaymentStatus @default(PENDING)
+  paymentLink            String?
+  rawPayload             Json?
+  processedAt            DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  business               Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transaction            Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, externalTransactionId])
+  @@unique([businessId, checkoutRequestId])
+  @@index([businessId, status])
+  @@index([businessId, createdAt])
+  @@map("payments")
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  businessId  String?   @map("business_id")
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  businessId  String?  @map("business_id")
+  actorUserId String?
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@map("audit_logs")
+}
