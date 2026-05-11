@@ -14,6 +14,7 @@ Multi-tenant POS SaaS built with Next.js, Node.js, PostgreSQL, Prisma, JWT auth,
 - `apps/web` - customer-facing app and cashier UI
 - `apps/api/prisma/schema.prisma` - tenant-aware data model
 - `docs/API.md` - API reference
+- `docs/DEPLOYMENT_CHECKLIST.md` - Neon, Docker, and GitHub Actions deployment checklist
 
 ## Local Setup
 1. Copy `.env.example` to `.env` and fill in your secrets.
